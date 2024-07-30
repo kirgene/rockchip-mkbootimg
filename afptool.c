@@ -106,6 +106,7 @@ int unpack_update(const char* srcfile, const char* dstdir) {
 	}
 
 	
+#if 0
 	printf("Check file...");
 	fflush(stdout);
 	fseek(fp, 0, SEEK_SET);
@@ -114,40 +115,51 @@ int unpack_update(const char* srcfile, const char* dstdir) {
 		goto unpack_fail;
 	}
 	printf("OK\n");
+#endif
 
 	printf("------- UNPACK -------\n");
-	if (header.num_parts) {
-		unsigned i;
-		char dir[PATH_MAX];
+	unsigned i = 0;
+	char dir[PATH_MAX];
 
-		for (i = 0; i < header.num_parts; i++) {
-			struct update_part *part = &header.parts[i];
-			printf("%s\t0x%08X\t0x%08X\n", part->filename, part->pos,
-					part->size);
+	while (1) {
+		struct update_part part;
 
-			if (strcmp(part->filename, "SELF") == 0) {
-				printf("Skip SELF file.\n");
-				continue;
-			}
+		fseek(fp, (char*)&header.parts[i++] - (char*)&header, SEEK_SET);
 
-			// parameter 多出文件头8个字节,文件尾4个字节
-			if (memcmp(part->name, "parameter", 9) == 0) {
-				part->pos += 8;
-				part->size -= 12;
-			}
-
-			snprintf(dir, sizeof(dir), "%s/%s", dstdir, part->filename);
-
-			if (-1 == create_dir(dir))
-				continue;
-
-			if (part->pos + part->size > header.length) {
-				fprintf(stderr, "Invalid part: %s\n", part->name);
-				continue;
-			}
-
-			extract_file(fp, part->pos, part->size, dir);
+		if (sizeof(part) != fread(&part, 1, sizeof(part), fp)) {
+			fprintf(stderr, "Can't read partition header\n");
+			goto unpack_fail;
 		}
+
+		if (!part.filename || !part.pos) {
+			break;
+		}
+
+		printf("%s\t0x%08X\t0x%08X\n", part.filename, part.pos,
+				part.size);
+
+		if (strcmp(part.filename, "SELF") == 0) {
+			printf("Skip SELF file.\n");
+			continue;
+		}
+
+		// parameter 多出文件头8个字节,文件尾4个字节
+		if (memcmp(part.name, "parameter", 9) == 0) {
+			part.pos += 8;
+			part.size -= 12;
+		}
+
+		snprintf(dir, sizeof(dir), "%s/%s", dstdir, part.filename);
+
+		if (-1 == create_dir(dir))
+			continue;
+
+		if (part.pos + part.size > header.length) {
+			fprintf(stderr, "Invalid part: %s\n", part.name);
+			continue;
+		}
+
+		extract_file(fp, part.pos, part.size, dir);
 	}
 
 	fclose(fp);
